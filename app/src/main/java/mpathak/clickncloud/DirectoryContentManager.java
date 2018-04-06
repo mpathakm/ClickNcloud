@@ -41,14 +41,8 @@ public class DirectoryContentManager
         return returnImages;
     }
 
-    public void copyImagesToWaitingToUploadFolder(ArrayList<File> images, Context context)
+    public void converImagesToThumbnails(ArrayList<File> images, Context context)
     {
-        File waitingToUploadDirectory = new File(Environment.getExternalStorageDirectory(), context.getResources().getString(R.string.waiting_to_upload));
-        if(!waitingToUploadDirectory.exists())
-        {
-            waitingToUploadDirectory.mkdir();
-        }
-
         for(int i=0; i<images.size(); i++)
         {
             ImageCompressor.convertImageToThumbnail(images.get(i).getAbsolutePath(), context);

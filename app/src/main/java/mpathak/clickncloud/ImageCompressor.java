@@ -15,7 +15,7 @@ import java.io.FileOutputStream;
 
 public class ImageCompressor
 {
-    public static Bitmap convertImageToThumbnail(String imagePath, Context context)
+    public static void convertImageToThumbnail(String imagePath, Context context)
     {
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inSampleSize = 10;
@@ -27,7 +27,7 @@ public class ImageCompressor
         String filename = imagePath.substring(imagePath.lastIndexOf("/")+1);
         saveThumbnailInThumbnailDirectory(extractedThumbnailBitmap, filename, context);
 
-        return extractedThumbnailBitmap;
+        //return extractedThumbnailBitmap;
     }
 
     private static void saveThumbnailInThumbnailDirectory(Bitmap finalBitmap, String imageName, Context context)
