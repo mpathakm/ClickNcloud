@@ -1,6 +1,7 @@
 package mpathak.clickncloud;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.ThumbnailUtils;
@@ -15,7 +16,7 @@ import java.io.FileOutputStream;
 
 public class ImageCompressor
 {
-    public static void convertImageToThumbnail(String imagePath, Context context)
+    public static Bitmap convertImageToThumbnail(String imagePath)
     {
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inSampleSize = 10;
@@ -24,19 +25,16 @@ public class ImageCompressor
 
         Bitmap extractedThumbnailBitmap = ThumbnailUtils.extractThumbnail(bitmap, 500,500);
 
-        String filename = imagePath.substring(imagePath.lastIndexOf("/")+1);
-        saveThumbnailInThumbnailDirectory(extractedThumbnailBitmap, filename, context);
-
-        //return extractedThumbnailBitmap;
+        return extractedThumbnailBitmap;
     }
 
-    private static void saveThumbnailInThumbnailDirectory(Bitmap finalBitmap, String imageName, Context context)
+    public static void saveThumbnailInThumbnailDirectory(Bitmap finalBitmap, String imageName)
     {
-        File thumbnailsDirectory = new File(Environment.getExternalStorageDirectory(), context.getResources().getString(R.string.thumbnails));
+        File thumbnailsDirectory = new File(Environment.getExternalStorageDirectory(), Constants.Thumbnails);
 
         if(!thumbnailsDirectory.exists())
         {
-            thumbnailsDirectory.mkdir();
+            throw new Resources.NotFoundException("The thumbnail directory could not be found, please create one");
         }
 
         File file = new File (thumbnailsDirectory, imageName);

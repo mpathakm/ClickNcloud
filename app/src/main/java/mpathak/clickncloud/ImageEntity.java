@@ -13,5 +13,4 @@ public class ImageEntity
     public int QueuedToDelete;
     public String CloudProvider;
     public float OriginalSize;
-    public float ReducedSize;
 }

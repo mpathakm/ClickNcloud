@@ -1,6 +1,7 @@
 package mpathak.clickncloud;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.os.Environment;
 import android.util.Log;
 
@@ -11,6 +12,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+
+import javax.inject.Inject;
 
 /**
  * Created by mpathak on 4/1/2018.
@@ -41,12 +44,50 @@ public class DirectoryContentManager
         return returnImages;
     }
 
-    public void converImagesToThumbnails(ArrayList<File> images, Context context)
+    public Bitmap converImageToThumbNail(File image)
     {
-        for(int i=0; i<images.size(); i++)
-        {
-            ImageCompressor.convertImageToThumbnail(images.get(i).getAbsolutePath(), context);
+        return ImageCompressor.convertImageToThumbnail(image.getAbsolutePath());
+    }
+
+    public void converImagesToThumbnails(ArrayList<File> images)
+    {
+        for(int i=0; i<images.size(); i++) {
+            Bitmap bitmapImage = ImageCompressor.convertImageToThumbnail(images.get(i).getAbsolutePath());
+
+            String filename = images.get(i).getAbsolutePath().substring(images.get(i).getAbsolutePath().lastIndexOf("/") + 1);
+            ImageCompressor.saveThumbnailInThumbnailDirectory(bitmapImage, filename);
         }
+    }
+
+    public boolean deleteThumbFromDirectory(String thumbName)
+    {
+        boolean delete = false;
+        File thumbnailFile = new File(Environment.getExternalStorageDirectory(), Constants.Thumbnails + "/" + thumbName);
+
+        if(thumbnailFile.exists())
+        {
+            delete = thumbnailFile.delete();
+        }
+
+        return delete;
+    }
+
+    public void CreateApplicationDirectories()
+    {
+        File applicationRootDirectory = new File(Environment.getExternalStorageDirectory(), Constants.Application_Root_Directory);
+
+        if(!applicationRootDirectory.exists())
+        {
+            applicationRootDirectory.mkdir();
+        }
+
+        File thumbnailsDirectory = new File(Environment.getExternalStorageDirectory(), Constants.Thumbnails);
+
+        if(!thumbnailsDirectory.exists())
+        {
+            thumbnailsDirectory.mkdir();
+        }
+
     }
 
     @Deprecated

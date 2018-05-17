@@ -20,6 +20,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".FullImageShowActivity"></activity>
+        <service android:name=".BackgroundServices" android:exported="false"></service>
     </application>
 
 </manifest>

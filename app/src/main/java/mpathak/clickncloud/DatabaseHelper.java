@@ -39,8 +39,8 @@ public class DatabaseHelper extends SQLiteOpenHelper
     public static final String ORIGINAL_SIZE = "originalsize";  //float
     private static final int originalsize_column_index = 6;
 
-    public static final String REDUCED_SIZE = "reducedsize";   //float
-    private static final int reducedsize_column_index = 7;
+    //public static final String REDUCED_SIZE = "reducedsize";   //float
+    //private static final int reducedsize_column_index = 7;
 
     public DatabaseHelper(Context context)//, String name, SQLiteDatabase.CursorFactory factory, int version, DatabaseErrorHandler errorHandler) {
     {/*super(context, name, factory, version, errorHandler);*/
@@ -51,7 +51,7 @@ public class DatabaseHelper extends SQLiteOpenHelper
     public void onCreate(SQLiteDatabase db) {
         db.execSQL("create table " + TABLE_NAME + "("+ Id +" INTEGER PRIMARY KEY AUTOINCREMENT, "+ NAME +" TEXT NOT NULL, " +
                 ABSOLUTE_PATH + " TEXT NOT NULL, "+ IS_UPLOADED +" INTEGER DEFAULT 0, "+ QUEUED_TO__DELETE +" INTEGER DEFAULT 0, " +
-                CLOUDD_PROVIDER +" TEXT NOT NULL, "+ ORIGINAL_SIZE +" REAL, "+ REDUCED_SIZE +" REAL)");
+                CLOUDD_PROVIDER +" TEXT NOT NULL, "+ ORIGINAL_SIZE +" REAL)");
     }
 
     @Override
@@ -78,7 +78,6 @@ public class DatabaseHelper extends SQLiteOpenHelper
         contentValues.put(QUEUED_TO__DELETE, imageEntity.QueuedToDelete);
         contentValues.put(CLOUDD_PROVIDER, imageEntity.CloudProvider);
         contentValues.put(ORIGINAL_SIZE, imageEntity.OriginalSize);
-        contentValues.put(REDUCED_SIZE, imageEntity.ReducedSize);
 
         //ToDo: This return row Id from here
         long result = thisDb.insert(TABLE_NAME, null, contentValues);
@@ -104,7 +103,6 @@ public class DatabaseHelper extends SQLiteOpenHelper
             imageEntity.CloudProvider = res.getString(cloudprovider_column_index);
             imageEntity.QueuedToDelete = res.getInt(queuedtodelete_column_index);
             imageEntity.OriginalSize = res.getFloat(originalsize_column_index);
-            imageEntity.ReducedSize = res.getFloat(reducedsize_column_index);
 
             imageEntities.add(imageEntity);
         }
@@ -125,12 +123,12 @@ public class DatabaseHelper extends SQLiteOpenHelper
         return true;
     }
 
-    public boolean deleteEntry(ImageEntity imageEntity)
+    public boolean deleteEntryByname(String imageName)
     {
         SQLiteDatabase thisDb = this.getWritableDatabase();
         ContentValues contentValues = new ContentValues();
 
-        thisDb.delete(TABLE_NAME, "id=?", new String[]{imageEntity.Id});
+        thisDb.delete(TABLE_NAME, "imagename=?", new String[]{imageName});
         return true;
     }
 
