@@ -1,0 +1,938 @@
+# Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. 
+# A copy of the License is located at
+#    http://aws.amazon.com/apache2.0/
+# or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, 
+# either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This CloudFormation Template deploys a complete REDCap environment.  It
+  depends on the REDCap-vpc CloudFormation Template.
+
+Parameters:
+  SESUsername:
+    Type: String
+    Description: Username to use for authentication to SES.
+  SESPassword:
+    Type: String
+    Description: Username to use for authentication to SES.
+    NoEcho: true
+  SESRegion:
+    Type: String
+    AllowedValues:
+      - us-east-2
+      - us-east-1
+      - us-west-1
+      - us-west-2
+      - af-south-1
+      - ap-south-1
+      - ap-northeast-1
+      - ap-northeast-2
+      - ap-northeast-3
+      - ap-southeast-1
+      - ap-southeast-2
+      - ca-central-1
+      - eu-central-1
+      - eu-west-1
+      - eu-west-2
+      - eu-west-3
+      - eu-north-1
+      - sa-east-1
+      - us-gov-west-1
+    Description: Region where you configured your SES credentials.
+  S3AccessKey:
+    Type: String
+    NoEcho: True
+    Description: S3 Access Key to use to access REDCap File Repository Bucket
+  S3SecretKey:
+    Type: String
+    NoEcho: True
+    Description: S3 Access Key to use to access REDCap File Repository Bucket
+  MultiAZDatabase:
+    AllowedValues:
+      - true
+      - false
+    Default: false
+    Description: Specifies whether a to deploy the AWS Aurora MySQL Database in Multi-AZ configuration.
+    Type: String
+  DatabaseInstanceType:
+    AllowedValues:
+      - db.t3.small
+      - db.t3.medium
+      - db.t3.large
+      - db.r5.large
+      - db.r5.xlarge
+      - db.r5.2xlarge
+      - db.r5.4xlarge
+      - db.r5.8xlarge
+      - db.r5.16xlarge
+      - db.r5.24xlarge
+    ConstraintDescription: Must be a valid RDS instance class.
+    Default: db.t3.small
+    Description: The Amazon RDS database instance class.
+    Type: String
+  WebAsgMax:
+    AllowedPattern: ^((?!0$)[1-2]?[0-9]|30)$
+    ConstraintDescription: Must be a number between 1 and 30.
+    Default: 1
+    Description: Specifies the maximum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  WebAsgMin:
+    AllowedPattern: ^([0-0]?[0-9]|10)$
+    ConstraintDescription: Must be a number between 0 and 10.
+    Default: 1
+    Description: Specifies the minimum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  WebInstanceType:
+    AllowedValues:
+      - t3.nano
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+      - m5.large 
+      - m5.xlarge 
+      - m5.2xlarge 
+      - m5.4xlarge 
+      - m5.12xlarge 
+      - m5.24xlarge 
+      - c5.large 
+      - c5.xlarge 
+      - c5.2xlarge 
+      - c5.4xlarge 
+      - c5.9xlarge 
+      - c5.18xlarge
+      - r5.large
+      - r5.xlarge
+      - r5.2xlarge
+      - r5.4xlarge
+      - r5.8xlarge
+      - r5.16xlarge
+      - r5.24xlarge
+    ConstraintDescription: Must be a valid Amazon EC2 instance type.
+    Default: t3.micro
+    Description: The Amazon EC2 instance type for your web instances.
+    Type: String
+  PHPVersion:
+    AllowedValues:
+      - 7.4
+      - 8.0
+      - 8.1
+    Default: 8.1
+    Description: The version of PHP to use with REDCap.
+    Type: String
+  S3FileRepositoryBucket:
+    Type: String
+    Description: 'S3 Bucket Name to be used for REDCap File Repository'
+  SslCertificate:
+    Type: String
+    Description: "AWS ARN to ACM generated SSL certificate." 
+  EBEndpoint:
+    Description: "The unique name to use for your Elastic Beanstalk URL (will be rendered http://(EBEndpoint).(region).elasticbeanstalk.com)"
+    Type: String
+    Default: myREDCapp
+  UseRoute53Boolean:
+    AllowedValues:
+      - true
+      - false
+    Default: true
+    Description: Specifies whether a record set should be created in Route 53 for your REDCap domain name.  If not, you will recieve a default Elastic Beanstalk DNS name (e.g. redcap.us-east-1.elasticbeanstalk.com).
+    Type: String
+  UseACMBoolean:
+    AllowedValues:
+      - true
+      - false
+    Default: true
+    Description: Specifies whether an SSL certificate should be generated for your domain name using AWS Certificate Manager (ACM).  If one is not generated, HTTP will be used and an SSL certificate can be applied after deployment.
+    Type: String
+  HostedZoneName:
+    Type: String
+    Description: "The hosted zone that will be used by your application.  If using the Elastic Beanstalk provided hosted zone in us-east-1, just accept the default value."
+    Default: us-east-1.elasticbeanstalk.com
+  DomainName:
+    AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: '[ Optional, only if using Route53 ] The sub-domain name of the Project REDCap site.  This sub-domain will be prepended your specified Hosted Zone (e.g. redcap in redcap.example.edu).'
+    Type: String
+  S3orAPI:
+    Description: "Download REDCap automatically or provide it in S3?"
+    Type: String
+    AllowedValues:
+      - "Provide in S3"
+      - "Download using REDCap API"  
+  RedcapS3Bucket:
+    Description: "S3 bucket that contains your REDCap binary file"
+    Type: String
+  RedcapS3Key:
+    Description: "S3 Key that points to your Redcap Binary file"
+    Type: String
+  RedcapS3BucketRegion:
+    Description: "AWS Region of the S3 bucket that contains your REDCap binary file"
+    Type: String
+    AllowedValues:
+      - us-east-2
+      - us-east-1
+      - us-west-1
+      - us-west-2
+      - af-south-1
+      - ap-south-1
+      - ap-northeast-1
+      - ap-northeast-2
+      - ap-northeast-3
+      - ap-southeast-1
+      - ap-southeast-2
+      - ca-central-1
+      - eu-central-1
+      - eu-west-1
+      - eu-west-2
+      - eu-west-3
+      - eu-north-1
+      - sa-east-1
+      - us-gov-west-1
+  RedcapUname:
+    Description: Your REDCap Community Username (used if 'Download using REDCap API' is selected)
+    Type: String
+  RedcapPword:
+    Description: Your REDCap Community Password (used if 'Download using REDCap API' is selected)
+    Type: String
+    NoEcho: true
+  Redcapver:
+    Description: The version of REDCap you want to install, 'latest' for latest version (used if 'Download using REDCap API' is selected)
+    Type: String
+  DatabaseMasterPassword:
+    Description: Must be letters (upper or lower), numbers, spaces, and these special characters `~#$%^&*()_+,-
+    Type: String
+    NoEcho: true
+    AllowedPattern: ^([a-zA-Z0-9`~#$%^&*()_+,\\-])*$
+    ConstraintDescription: The Amazon RDS master password. Letters, numbers, spaces, and these special characters `~#$%^&*()_+,-
+  EC2KeyName:
+    Description: The EC2 Key Pair to use for the Atlas/WebAPI EC2 Instances.
+    Type: AWS::EC2::KeyPair::KeyName
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+  SubnetPublicA:
+    Type: AWS::EC2::Subnet::Id
+  SubnetPublicB:
+    Type: AWS::EC2::Subnet::Id
+  SubnetAppA:
+    Type: AWS::EC2::Subnet::Id
+  SubnetAppB:
+    Type: AWS::EC2::Subnet::Id
+  SubnetDataA:
+    Type: AWS::EC2::Subnet::Id
+  SubnetDataB:
+    Type: AWS::EC2::Subnet::Id
+  SGPublic:
+    Type: AWS::EC2::SecurityGroup::Id
+  SGApp:
+    Type: AWS::EC2::SecurityGroup::Id
+  SGData:
+    Type: AWS::EC2::SecurityGroup::Id
+  EBServiceRole:
+    Type: String
+  EBInstanceProfile:
+    Type: String
+  TempEC2InstanceProfile:
+    Type: String
+  EBBucket:
+    Type: String
+    Description: 'S3 Bucket used to store the application package for Elastic Beanstalk.'
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+
+Conditions:
+  DeployMultiAZDB: 
+    !Equals [ true, !Ref MultiAZDatabase ] 
+  NotDeployMultiAZDB: 
+    !Equals [ false, !Ref MultiAZDatabase ]
+  DeployRoute53: 
+    !Equals [ true, !Ref UseRoute53Boolean ]
+  DeployACM: !And 
+    - !Equals [ true, !Ref UseACMBoolean ]
+    - !Condition DeployRoute53
+  NotDeployACM: !Or
+    - !Equals [ false, !Ref UseACMBoolean ]
+    - !Equals [ false, !Ref UseRoute53Boolean ]
+  UseAPIDownload: !Equals
+    - !Ref S3orAPI
+    - "Download using REDCap API"
+
+
+Resources:
+
+# Defines the Elastic Beanstalk environment that deploys the load balancer and Project REDCap Apache/PHP servers in an auto-scaling group.
+  RCAppNoMultiAZDB:
+    Type: 'AWS::ElasticBeanstalk::Application'
+    Condition: NotDeployMultiAZDB
+    DependsOn: 
+      - EC2WaitCondition
+      - RDSDBInstance1   
+    Properties:
+      Description: Project Redcap PHP servers
+ 
+ 
+  RCAppNoMultiAZDBVersion:
+    Type: 'AWS::ElasticBeanstalk::ApplicationVersion'
+    Condition: NotDeployMultiAZDB
+    Properties:
+      ApplicationName:
+        Ref: RCAppNoMultiAZDB
+      Description: Initial Version
+      SourceBundle:
+        S3Bucket: !Ref EBBucket
+        S3Key: redcap-eb.zip
+  
+  RCAppMultiAZDB:
+    Type: 'AWS::ElasticBeanstalk::Application'
+    Condition: DeployMultiAZDB
+    DependsOn: 
+      - EC2WaitCondition
+      - RDSDBInstance1
+      - RDSDBInstance2
+    Properties:
+      Description: Project Redcap PHP servers
+ 
+  RCAppMultiAZDBVersion:
+    Type: 'AWS::ElasticBeanstalk::ApplicationVersion'
+    Condition: DeployMultiAZDB
+    Properties:
+      ApplicationName:
+        Ref: RCAppMultiAZDB
+      Description: Initial Version
+      SourceBundle:
+        S3Bucket: !Ref EBBucket
+        S3Key: redcap-eb.zip
+
+  REDCapEnvironmentACM:
+    Type: 'AWS::ElasticBeanstalk::Environment'
+    Condition: DeployACM
+    DependsOn: EC2WaitCondition
+    Properties:
+      ApplicationName: !If [ DeployMultiAZDB, !Ref 'RCAppMultiAZDB', !Ref 'RCAppNoMultiAZDB' ]
+      Description: Elastic Beanstalk deployment of Project Redcap
+      SolutionStackName: !Select [1, !Split ['"', !Select [0, !Split ['}', !Select [1, !Split [':', !GetAtt 'EC2WaitCondition.Data']]]]]]
+      VersionLabel:  !If [ DeployMultiAZDB, !Ref 'RCAppMultiAZDBVersion', !Ref 'RCAppNoMultiAZDBVersion' ]
+      EnvironmentName: !Ref EBEndpoint
+      CNAMEPrefix: !Ref EBEndpoint
+      Tier:
+        Name: WebServer
+        Type: Standard
+        Version: ' '
+      OptionSettings:
+        - Namespace: 'aws:autoscaling:launchconfiguration'
+          OptionName: IamInstanceProfile
+          Value: !Ref EBInstanceProfile 
+        - Namespace: 'aws:elasticbeanstalk:environment'
+          OptionName: ServiceRole
+          Value: !Ref EBServiceRole        
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: LoadBalanced
+        - Namespace: aws:elasticbeanstalk:container:php:phpini
+          OptionName: document_root
+          Value: '/redcap'
+        - Namespace: aws:autoscaling:asg
+          OptionName: MinSize
+          Value: !Ref WebAsgMin
+        - Namespace: aws:autoscaling:asg
+          OptionName: MaxSize
+          Value: !Ref WebAsgMax
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: EC2KeyName
+          Value: !Ref 'EC2KeyName'
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: InstanceType
+          Value: !Ref WebInstanceType
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SecurityGroups
+          Value: !Ref SGApp
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SSHSourceRestriction
+          Value: 'tcp, 22, 22, 127.0.0.1/32'
+        - Namespace: aws:autoscaling:trigger
+          OptionName: MeasureName
+          Value: CPUUtilization
+        - Namespace: aws:autoscaling:trigger
+          OptionName: Unit
+          Value: Percent
+        - Namespace: aws:autoscaling:trigger
+          OptionName: UpperThreshold
+          Value: '80'
+        - Namespace: aws:autoscaling:trigger
+          OptionName: LowerThreshold
+          Value: '20'
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: MaxBatchSize
+          Value: '1'
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: MinInstancesInService
+          Value: '0'
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: RollingUpdateEnabled
+          Value: 'true'
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: RollingUpdateType
+          Value: Health
+        - Namespace: aws:ec2:vpc
+          OptionName: AssociatePublicIpAddress
+          Value: 'false'
+        - Namespace: aws:ec2:vpc
+          OptionName: ELBSubnets
+          Value: !Join
+            - ','
+            - - !Ref SubnetPublicA
+              - !Ref SubnetPublicB
+        - Namespace: aws:ec2:vpc
+          OptionName: Subnets
+          Value: !Join
+            - ','
+            - - !Ref SubnetAppA
+              - !Ref SubnetAppB
+        - Namespace: aws:ec2:vpc
+          OptionName: VPCId
+          Value: !Ref VPCId
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: DeploymentPolicy
+          Value: Rolling
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: LoadBalancerType
+          Value: application
+        - Namespace: aws:elasticbeanstalk:healthreporting:system
+          OptionName: SystemType
+          Value: enhanced
+        - Namespace: aws:elbv2:loadbalancer
+          OptionName: SecurityGroups
+          Value: !Ref SGPublic
+        - Namespace: aws:elbv2:loadbalancer
+          OptionName: ManagedSecurityGroup
+          Value: !Ref SGPublic
+        - Namespace: aws:elbv2:listener:default
+          OptionName: ListenerEnabled
+          Value: false
+        - Namespace: aws:elbv2:listener:443
+          OptionName: DefaultProcess
+          Value: https
+        - Namespace: aws:elbv2:listener:443
+          OptionName: Protocol
+          Value: HTTPS
+        - Namespace: aws:elbv2:listener:443
+          OptionName: SSLCertificateArns
+          Value: !Ref SslCertificate
+        - Namespace: aws:elasticbeanstalk:environment:process:https
+          OptionName: Port
+          Value: 443
+        - Namespace: aws:elasticbeanstalk:environment:process:https
+          OptionName: Protocol
+          Value: HTTPS          
+        - Namespace: aws:elasticbeanstalk:environment:process:https
+          OptionName: StickinessEnabled
+          Value: true  
+
+
+
+  REDCapEnvironmentNoACM:
+    Type: 'AWS::ElasticBeanstalk::Environment'
+    Condition: NotDeployACM
+    DependsOn: EC2WaitCondition
+    Properties:
+      ApplicationName: !If [ DeployMultiAZDB, !Ref 'RCAppMultiAZDB', !Ref 'RCAppNoMultiAZDB' ]
+      Description: Elastic Beanstalk deployment of Project Redcap
+      SolutionStackName: !Select [1, !Split ['"', !Select [0, !Split ['}', !Select [1, !Split [':', !GetAtt 'EC2WaitCondition.Data']]]]]]
+      VersionLabel:  !If [ DeployMultiAZDB, !Ref 'RCAppMultiAZDBVersion', !Ref 'RCAppNoMultiAZDBVersion' ]
+      EnvironmentName: !Ref EBEndpoint
+      CNAMEPrefix: !Ref EBEndpoint
+      Tier:
+        Name: WebServer
+        Type: Standard
+        Version: ' '
+      OptionSettings:
+        - Namespace: 'aws:autoscaling:launchconfiguration'
+          OptionName: IamInstanceProfile
+          Value: !Ref EBInstanceProfile 
+        - Namespace: 'aws:elasticbeanstalk:environment'
+          OptionName: ServiceRole
+          Value: !Ref EBServiceRole        
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: LoadBalanced
+        - Namespace: aws:elasticbeanstalk:container:php:phpini
+          OptionName: document_root
+          Value: '/redcap'
+        - Namespace: aws:autoscaling:asg
+          OptionName: MinSize
+          Value: !Ref WebAsgMin
+        - Namespace: aws:autoscaling:asg
+          OptionName: MaxSize
+          Value: !Ref WebAsgMax
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: EC2KeyName
+          Value: !Ref 'EC2KeyName'
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: InstanceType
+          Value: !Ref WebInstanceType
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SecurityGroups
+          Value: !Ref SGApp
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SSHSourceRestriction
+          Value: 'tcp, 22, 22, 127.0.0.1/32'
+        - Namespace: aws:autoscaling:trigger
+          OptionName: MeasureName
+          Value: CPUUtilization
+        - Namespace: aws:autoscaling:trigger
+          OptionName: Unit
+          Value: Percent
+        - Namespace: aws:autoscaling:trigger
+          OptionName: UpperThreshold
+          Value: '80'
+        - Namespace: aws:autoscaling:trigger
+          OptionName: LowerThreshold
+          Value: '20'
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: MaxBatchSize
+          Value: '1'
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: MinInstancesInService
+          Value: '0'
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: RollingUpdateEnabled
+          Value: 'true'
+        - Namespace: aws:autoscaling:updatepolicy:rollingupdate
+          OptionName: RollingUpdateType
+          Value: Health
+        - Namespace: aws:ec2:vpc
+          OptionName: AssociatePublicIpAddress
+          Value: 'false'
+        - Namespace: aws:ec2:vpc
+          OptionName: ELBSubnets
+          Value: !Join
+            - ','
+            - - !Ref SubnetPublicA
+              - !Ref SubnetPublicB
+        - Namespace: aws:ec2:vpc
+          OptionName: Subnets
+          Value: !Join
+            - ','
+            - - !Ref SubnetAppA
+              - !Ref SubnetAppB
+        - Namespace: aws:ec2:vpc
+          OptionName: VPCId
+          Value: !Ref VPCId
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: DeploymentPolicy
+          Value: Rolling
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: LoadBalancerType
+          Value: application
+        - Namespace: aws:elasticbeanstalk:healthreporting:system
+          OptionName: SystemType
+          Value: enhanced
+        - Namespace: aws:elbv2:loadbalancer
+          OptionName: SecurityGroups
+          Value: !Ref SGPublic
+        - Namespace: aws:elbv2:loadbalancer
+          OptionName: ManagedSecurityGroup
+          Value: !Ref SGPublic
+        - Namespace: aws:elasticbeanstalk:environment:process:default
+          OptionName: StickinessEnabled
+          Value: true 
+        - Namespace: aws:elasticbeanstalk:environment:process:https
+          OptionName: Port
+          Value: 443
+        - Namespace: aws:elasticbeanstalk:environment:process:https
+          OptionName: Protocol
+          Value: HTTPS
+        - Namespace: aws:elasticbeanstalk:environment:process:https
+          OptionName: StickinessEnabled
+          Value: true 
+
+
+
+
+# Deploys the RDS Aurora Postgres cluster used to store the application data for WebAPI.
+  RDSCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      MasterUsername: 'master'
+      MasterUserPassword: !Ref DatabaseMasterPassword
+      DatabaseName: 'redcap'
+      Engine: aurora-mysql
+      StorageEncrypted: 'True'
+      Port: 3306
+      DBSubnetGroupName:
+        Ref: RDSDBSubnets
+      DBClusterParameterGroupName:
+        Ref: RDSDBClusterParameterGroup
+      VpcSecurityGroupIds:
+        - !Ref SGData
+  RDSDBInstance1:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBSubnetGroupName:
+        Ref: RDSDBSubnets
+      DBParameterGroupName:
+        Ref: RDSDBParameterGroup
+      Engine: aurora-mysql
+      DBClusterIdentifier:
+        Ref: RDSCluster
+      PubliclyAccessible: 'false'
+      DBInstanceClass: !Ref DatabaseInstanceType
+# Only create the second instance if the user specified a Multi-AZ Database  
+  RDSDBInstance2:
+    Condition: DeployMultiAZDB
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBSubnetGroupName:
+        Ref: RDSDBSubnets
+      DBParameterGroupName:
+        Ref: RDSDBParameterGroup
+      Engine: aurora-mysql
+      DBClusterIdentifier:
+        Ref: RDSCluster
+      PubliclyAccessible: 'false'
+      DBInstanceClass: !Ref DatabaseInstanceType
+  RDSDBClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description: CloudFormation Sample Aurora Cluster Parameter Group
+      Family: aurora-mysql8.0
+      Parameters:
+        time_zone: US/Eastern
+  RDSDBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: CloudFormation Sample Aurora Parameter Group
+      Family: aurora-mysql8.0
+      Parameters:
+        sql_mode: IGNORE_SPACE
+  RDSDBSubnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet Group for RDS
+      SubnetIds:
+        - !Ref SubnetDataA
+        - !Ref SubnetDataB
+
+
+
+
+
+# This is a temporary EC2 server used to add the necessary Elastic Beanstalk scripts to the Project REDCap source code zip file.
+  TempEC2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: 
+      - RDSCluster
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          files:
+              /etc/awslogs/awslogs.conf:
+                content: !Sub 
+                  - |
+                    [general]
+                    state_file = /var/lib/awslogs/agent-state        
+                    
+                    [REDCap-build-log]
+                    file = /var/log/cloud-init-output.log
+                    log_group_name = redcap-temporary-ec2-instance-log
+                    log_stream_name = ${EB}-build-log
+                  - { EB: !Ref EBEndpoint }
+                mode: 000664
+                owner: root
+                group: root
+              /etc/awslogs/awscli.conf:
+                content: !Sub |
+                  [plugins]
+                  cwlogs = cwlogs
+                  [default]
+                  region = ${AWS::Region}
+                mode: 000664
+                owner: root
+                group: root
+              /tmp/99redcap_config.config:
+                content: !Sub 
+                  - |
+                    container_commands:
+                      leaderonly:
+                        command: "touch /leaderonly"
+                        leader_only: True
+                    files:
+                      "/create-redcap-user.sql":
+                        mode: "000755"
+                        owner: root
+                        group: root
+                        content: |
+                          CREATE USER IF NOT EXISTS 'redcap_user'@'%' IDENTIFIED BY '${DBPassword}';
+                          GRANT SELECT, INSERT, UPDATE, DELETE ON `redcap`.* TO 'redcap_user'@'%';
+                          -- Create second MySQL user as redcap_user2 with a random password, which could possibly a randomly generated value.
+                          FLUSH PRIVILEGES;
+                          CREATE USER IF NOT EXISTS 'redcap_user2'@'%' IDENTIFIED BY '${DBPassword}';
+                          GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, REFERENCES ON `redcap`.* TO 'redcap_user2'@'%';
+                          FLUSH PRIVILEGES;
+                      "/create-initial-user.sql":
+                        mode: "000755"
+                        owner: root
+                        group: root
+                        content: |
+                          UPDATE redcap_config SET value = 'table' WHERE field_name = 'auth_meth_global';
+                          INSERT INTO redcap_user_information (username, user_email, user_firstname, user_lastname, super_user) VALUES ('redcap_admin', 'joe.user@projectredcap.org', 'REDCap', 'Administrator', '1');
+                          INSERT INTO redcap_auth (username, password, legacy_hash, temp_pwd) VALUES ('redcap_admin', MD5('${DBPassword}'), '1', '1'); 
+                          UPDATE redcap_user_information SET super_user = '0' WHERE username = 'site_admin';
+                          UPDATE redcap_config set value = '2' where field_name = 'edoc_storage_option';
+                          UPDATE redcap_config SET value = '${S3Bucket}' WHERE field_name = 'amazon_s3_bucket';
+                          UPDATE redcap_config SET value = '${S3AccessKey}' WHERE field_name = 'amazon_s3_key';
+                          UPDATE redcap_config SET value = '${S3SecretKey}' WHERE field_name = 'amazon_s3_secret'; 
+                          UPDATE redcap_config SET value = '${AWS::Region}' WHERE field_name = 'amazon_s3_endpoint';     
+                          -- Manually set flag to indicate that this installation is being run on AWS CloudFormation
+                          REPLACE INTO redcap_config (field_name, value) VALUES ('aws_quickstart', '1'); 
+                          -- Add second MySQL user with user and password in *plain text* (will be auto-encrypted by REDCap afterward)
+                          REPLACE INTO redcap_config (field_name, value) VALUES
+                          ('redcap_updates_user', 'redcap_user2'),
+                          ('redcap_updates_password', '${DBPassword}'),
+                          ('redcap_updates_password_encrypted', '0');
+                          -- Translate old admin privileges for newer versions
+                          update redcap_user_information set account_manager = 1, access_system_config = 1, access_system_upgrade = 1,
+                            access_external_module_install = 1, admin_rights = 1, access_admin_dashboards = 1 where super_user = 1;
+                  - { DBPassword: !Ref DatabaseMasterPassword, S3Bucket: !Ref S3FileRepositoryBucket }
+                mode: 000500
+                owner: root
+                group: root
+              /tmp/https.conf:
+                content: |
+                  server {
+                      listen       443 ssl;
+                      server_name  localhost;
+                      
+                      ssl_certificate      /etc/pki/tls/certs/server.crt;
+                      ssl_certificate_key  /etc/pki/tls/certs/server.key;
+                      
+                      ssl_session_timeout  5m;
+                      
+                      ssl_protocols  TLSv1 TLSv1.1 TLSv1.2;
+                      ssl_prefer_server_ciphers   on;
+                      
+                      location / {
+                          proxy_pass  http://localhost:80;
+                          proxy_set_header   Connection "";
+                          proxy_http_version 1.1;
+                          proxy_set_header        Host            $host;
+                          proxy_set_header        X-Real-IP       $remote_addr;
+                          proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+                          proxy_set_header        X-Forwarded-Proto https;
+                      }
+                  }
+                mode: "000644"
+                owner: root
+                group: root
+              /tmp/99redcap_config.sh:
+                content: !Sub 
+                  - |
+                    #!/usr/bin/env bash
+                    export AWS_DEFAULT_REGION=${AWS::Region}
+                    #Insert the correct environment details into the database.php file
+                    sed -i "/\$hostname[ tab]\+/s/=.*/= '${RDSEndpoint}';/" /var/app/current/redcap/database.php
+                    sed -i "/\$db[ tab]\+/s/=.*/= 'redcap';/" /var/app/current/redcap/database.php
+                    sed -i "/\$username[ tab]\+/s/=.*/= 'redcap_user';/" /var/app/current/redcap/database.php
+                    sed -i "/\$password[ tab]\+/s/=.*/= '${DBPassword}';/" /var/app/current/redcap/database.php
+                    #If we don't have an established 'salt' string, generate one and store it in AWS SSM
+                    if ! aws ssm get-parameter --name redcap-salt; then
+                        aws ssm put-parameter --name "redcap-salt" --type "SecureString" --value `head /dev/urandom | tr -dc a-z0-9 | head -c 8 ; echo ''`
+                    fi
+                    #Apply 'salt' string from AWS SSM to the database.php file.  This ensures the 'salt' string is the same on every PHP server.
+                    sed -i "s#\$salt = '';#\$salt = '`aws ssm get-parameter --name redcap-salt --with-decryption --query 'Parameter.Value' --output text`';#" /var/app/current/redcap/database.php
+                    
+                    #only do the below tasks if it's the first deployment to this server.
+                    if [ ! -f /eb-configured ]; then
+
+                    systemctl restart nginx
+                    systemctl restart php-fpm
+
+                    touch /var/log/eb-activity.log               
+
+                    #Create the REDCap CRON entry
+                    (crontab -l ; echo -e "# REDCap Cron Job (runs every minute)\n* * * * * /usr/bin/php /var/app/current/redcap/cron.php > /dev/null") | crontab
+
+                    #Create redcap_user and redcap_user2
+                    mysql -h ${RDSEndpoint} -u master -D redcap --password=${DBPassword} < /create-redcap-user.sql
+
+                    # If this is the leader-node and if the REDCap schema hasn't already been applied, create the initial 'redcap_admin' user, grab the SQL off the install.php website and apply it.
+                    if [ -e /leaderonly ]; then
+                      if ! mysql -h ${RDSEndpoint} -u master -D redcap --password=${DBPassword} -e "select * from redcap_actions"; then
+                              count=0  
+                              while ! [ -s /curl.out ] && [ $count -ne "100" ];
+                              do
+                                (curl -o /curl.out -k -F redcap_csrf_token= -F superusers_only_create_project=0 -F superusers_only_move_to_prod=1 -F auto_report_stats=1 -F bioportal_api_token= -F redcap_base_url='${Protocol}${RCDomainName}.${HostedZone}/' -F enable_url_shortener=1 -F default_datetime_format='D/M/Y_12' -F default_number_format_decimal=, -F default_number_format_thousands_sep=. -F homepage_contact='REDCap Administrator (123-456-7890)' -F homepage_contact_email=email@yoursite.edu -F project_contact_name='REDCap Administrator (123-456-7890)' -F project_contact_email=email@yoursite.edu -F institution='SoAndSo University' -F site_org_type='SoAndSo Institute for Clinical and Translational Research' -F hook_functions_file='/var/app/current/redcap/hook_functions.php' ${Protocol}localhost/install.php)
+                                sleep 20
+                                let count+=1
+                              done                               
+                              sed -ni '/onclick=\x27this.select();\x27>/,/<\/textarea>/p' /curl.out 
+                              sed -i -e "1d" /curl.out
+                              temp=`tail -1 /curl.out | cut -d';' -f1`; sed '$d' /curl.out > /mysql-rc.sql; echo $temp';' >> /mysql-rc.sql
+                              mysql -h ${RDSEndpoint} -u master -D redcap --password=${DBPassword} < /mysql-rc.sql
+                              mysql -h ${RDSEndpoint} -u master -D redcap --password=${DBPassword} < /create-initial-user.sql
+                      fi
+                    fi
+                    rm -f /curl.out /mysql.sql /mysql-rc.sql /create-redcap-user.sql /create-initial-user.sql
+
+                    yum install -y php-ldap sendmail-cf 
+
+                    #Apply additional PHP configuration as specified by REDCap
+                    echo "max_input_vars = 100000" >> /etc/php.ini
+                    sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 32M/" /etc/php.ini
+                    sed -i "s/post_max_size = 8M/post_max_size = 32M/" /etc/php.ini
+
+                    if [ ${Protocol} == 'https://' ]; then
+                      echo "session.cookie_secure = on" >> /etc/php.ini
+                    fi
+
+                    systemctl restart nginx
+                    systemctl restart php-fpm
+                    
+                    #sendmail configuration to enable sending e-mails
+                    sudo postconf -e "relayhost = [email-smtp.${SESReg}.amazonaws.com]:587" \
+                    "smtp_sasl_auth_enable = yes" \
+                    "smtp_sasl_security_options = noanonymous" \
+                    "smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd" \
+                    "smtp_use_tls = yes" \
+                    "smtp_tls_security_level = encrypt" \
+                    "smtp_tls_note_starttls_offer = yes"
+                    echo "[email-smtp.${SESReg}.amazonaws.com]:587 ${SESu}:${SESpw}" >> /etc/postfix/sasl_passwd
+                    sudo postmap hash:/etc/postfix/sasl_passwd
+                    sudo postconf -e 'smtp_tls_CAfile = /etc/ssl/certs/ca-bundle.crt'
+                    sudo postfix start
+                    sudo postfix reload
+                    touch /eb-configured
+                    else 
+                    echo "Already ran EB configuration scripts.  This must be an application redeployment"
+                    fi
+                  - { SESReg: !Ref SESRegion, RDSEndpoint: !GetAtt RDSCluster.Endpoint.Address, DBPassword: !Ref DatabaseMasterPassword, Protocol: !If [ DeployACM, 'https://', 'http://' ], RCDomainName: !If [DeployRoute53, !Ref DomainName, !Ref EBEndpoint], HostedZone: !If [DeployRoute53, !Ref HostedZoneName, !Join ['.', [!Ref 'AWS::Region', 'elasticbeanstalk.com']]], SESu: !Ref SESUsername, SESpw: !Ref SESPassword }
+                mode: 000770
+                owner: root
+                group: root
+              /tmp/00HIPAA.config:
+                content: |
+                    commands:
+                      00mountencrypted:
+                        command: |
+                          #Create an encrypted EBS volume and mount it to store the HTTPD access_log and error_log.  Just in case PHI is written to these logs in error messages.
+                          mount='/var/log/nginx'
+                          if grep -qs "$mount" /proc/mounts; then
+                          echo "encrypted volume already mounted ..."
+                          else
+                          TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600") 
+                          awszone=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone)
+                          awsregion=${awszone::-1}
+                          device='/dev/sdh'
+                          instanceId=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+                          volumeId=$(aws ec2 create-volume --size 4 --region $awsregion --availability-zone $awszone --volume-type standard --encrypted --query VolumeId --output=text)
+                          aws ec2 wait volume-available --region $awsregion --volume-ids $volumeId
+                          aws ec2 attach-volume --volume-id $volumeId --instance-id $instanceId --device $device --region $awsregion
+                          aws ec2 wait volume-in-use --region $awsregion --volume-ids $volumeId
+                          aws ec2 modify-instance-attribute --instance-id $instanceId --block-device-mappings DeviceName=$device,Ebs={DeleteOnTermination=true} --region $awsregion
+                          while [ `stat ${device} 2>/dev/null 1>&2; echo $?` -ne 0 ]; do
+                          sleep 1
+                          done
+                          mkfs -t ext3 $device
+                          mkdir /tmp/mnt
+                          cp -a $mount/* /tmp/mnt
+                          mount $device $mount
+                          cp -a /tmp/mnt/* $mount
+                          fi
+                        ignoreErrors: false
+                      01SelfSignedSSL:
+                        command: |
+                          #Generate a self-signed cert to be used between the AWS ALB and the Apache PHP servers.
+                          if [ ! -f /etc/pki/tls/certs/server.key ]; then
+                          openssl genrsa 2048 > server.key
+                          openssl req -new -key server.key -out csr.pem -subj "/C=US/ST=WA/L=Seattle/O=anon/OU=anon/CN=none/emailAddress=none"
+                          openssl x509 -req -days 365 -in csr.pem -signkey server.key -out server.crt
+                          cp server.crt server.key /etc/pki/tls/certs/
+                          rm -f server.crt server.key csr.pem
+                          systemctl restart nginx
+                          else
+                          echo "Already have a self-signed private key.  This must be an application redeployment"
+                          fi
+                mode: 000500
+                owner: root
+                group: root
+    Properties:
+      InstanceInitiatedShutdownBehavior: 'terminate'
+      InstanceType: 't3.medium'
+      KeyName: !Ref 'EC2KeyName'
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref TempEC2InstanceProfile
+      SecurityGroupIds: 
+        - !Ref SGApp
+      SubnetId: !Ref SubnetAppA
+      UserData:
+        Fn::Base64: !Sub | 
+          #!/bin/bash
+          export REDCAP_FILE_NAME=$(echo ${RedcapS3Key} | rev | cut -d'/' -f 1 | rev)
+          export AWS_DEFAULT_REGION=${AWS::Region}
+          yum update -y aws-cli 
+          yum install -y awslogs
+
+          # Install SSM client
+          yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+          systemctl restart amazon-ssm-agent
+
+          aws configure set metadata_service_timeout 10
+          aws configure set metadata_service_num_attempts 5
+          #Use cfn-init to grab and apply the files specified in the above UserData
+          /opt/aws/bin/cfn-init --verbose --stack ${AWS::StackName} --resource TempEC2Instance --region ${AWS::Region}
+          cd /tmp
+          sudo systemctl start awslogsd
+
+          if [ "${S3orAPI}" = "Provide in S3" ]; then
+            #Get the REDCap source file specified by the user
+            aws s3 cp s3://${RedcapS3Bucket}/${RedcapS3Key} . --region ${RedcapS3BucketRegion}
+          else
+            curl -o redcap.zip -d "username=${RedcapUname}&password=${RedcapPword}&version=${Redcapver}&install=1" -X POST https://redcap.vanderbilt.edu/plugins/redcap_consortium/versions.php
+            export REDCAP_FILE_NAME=redcap.zip
+          fi
+
+          unzip $REDCAP_FILE_NAME -d "./redcap"
+          mkdir redcap/.ebextensions/
+          #Copy all of the configuration files and scripts we want Elastic Beanstalk to run into the source file
+          cp *.config redcap/.ebextensions
+          mkdir -p redcap/.platform/hooks/postdeploy/
+          #Copy all of the configuration files and scripts we want Elastic Beanstalk to run into the source file
+          cp 99redcap_config.sh redcap/.platform/hooks/postdeploy
+          mkdir -p redcap/.platform/nginx/conf.d/
+          cp https.conf redcap/.platform/nginx/conf.d/
+          
+          cd redcap
+          zip -r redcap-eb.zip .
+          #Put the ammended source file back in S3 so that Elastic Beanstalk can pick it up and deploy it
+          aws s3 mb s3://${EBBucket}
+          aws s3 cp redcap-eb.zip s3://${EBBucket}
+          #Create an encrypted S3 Bucket to be the REDCap File Repository
+          aws s3 mb s3://${S3FileRepositoryBucket}
+          aws s3api put-bucket-encryption --bucket ${S3FileRepositoryBucket} --server-side-encryption-configuration '{ "Rules": [ { "ApplyServerSideEncryptionByDefault": { "SSEAlgorithm": "AES256" } } ] }'
+          #Tell Elastic Beanstalk what the latest PHP 7 solution stack is 
+          echo ${PHPVersion}
+          export SOLUTION_STACK=`aws elasticbeanstalk list-available-solution-stacks --region ${AWS::Region} | grep -v "SolutionStackName" | grep "PHP ${PHPVersion}" | grep "Linux 2 " |  head -1 | cut -d \" -f2`
+          echo $SOLUTION_STACK
+          /opt/aws/bin/cfn-signal --stack ${AWS::StackName} --region ${AWS::Region} "${EC2WaitHandle}" -d "$SOLUTION_STACK"
+          #Shutdown and terminate this temporary instance 
+          sleep 600
+          shutdown -h now
+  EC2WaitCondition:
+    Type: "AWS::CloudFormation::WaitCondition"
+    DependsOn: "TempEC2Instance"
+    Properties: 
+      Handle: 
+        Ref: "EC2WaitHandle"
+      Timeout: "3600"
+      Count: 1
+  EC2WaitHandle:
+    Type: "AWS::CloudFormation::WaitConditionHandle"
+
+Outputs:
+  PublicAlbDnsName:
+    Value: !If [ DeployACM, !GetAtt 'REDCapEnvironmentACM.EndpointURL', !GetAtt 'REDCapEnvironmentNoACM.EndpointURL' ]
